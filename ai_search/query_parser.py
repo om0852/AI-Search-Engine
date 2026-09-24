@@ -83,14 +83,14 @@ class NaturalQueryParser:
 
     def correct_typo(self, word: str) -> str:
         w_lower = word.lower()
-        if w_lower in self.vocabulary_terms or len(w_lower) <= 3:
+        if w_lower in self.vocabulary_terms or len(w_lower) <= 2:
             return w_lower
 
         best_match = w_lower
         min_dist = 99
 
         for vocab in self.vocabulary_terms:
-            max_allowed = 2 if len(vocab) > 5 else 1
+            max_allowed = 2 if len(vocab) >= 4 else 1
             if abs(len(w_lower) - len(vocab)) <= max_allowed:
                 dist = self.edit_distance(w_lower, vocab)
                 if dist <= max_allowed and dist < min_dist:
