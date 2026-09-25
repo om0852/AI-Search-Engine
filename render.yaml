@@ -3,8 +3,9 @@ services:
     name: ai-search-engine
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn src.serving.app:app --host 0.0.0.0 --port $PORT
+    startCommand: sh -c "uvicorn src.serving.app:app --host 0.0.0.0 --port ${PORT:-10000}"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
     plan: free
+
