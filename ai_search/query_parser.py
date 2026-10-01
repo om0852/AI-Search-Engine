@@ -37,6 +37,19 @@ class NaturalQueryParser:
             "product": [
                 "product", "quality", "display", "battery", "camera", "delivery", "packaging",
                 "ui", "ux", "snappy", "fluid", "performance"
+            ],
+            "delivery": [
+                "delivery", "shipping", "courier", "package", "tracking", "delay", "delayed",
+                "not delivered", "stolen parcel", "damaged box"
+            ],
+            "telecom": [
+                "wifi", "network", "signal", "5g", "fiber", "broadband", "call drop", "sim", "data pack"
+            ],
+            "travel": [
+                "flight", "hotel", "booking", "cancelled", "cancellation", "reschedule", "airline", "pnr"
+            ],
+            "crypto": [
+                "crypto", "bitcoin", "ethereum", "wallet", "gas fee", "blockchain", "exchange"
             ]
         }
 
@@ -46,10 +59,12 @@ class NaturalQueryParser:
             "debit": "Finance & Payment Issue",
             "refund": "Finance & Payment Issue",
             "billing": "Finance & Payment Issue",
+            "bank": "Finance & Payment Issue",
             "bug": "Tech & Software Bugs",
             "crash": "Tech & Software Bugs",
             "lag": "Tech & Software Bugs",
             "error": "Tech & Software Bugs",
+            "exception": "Tech & Software Bugs",
             "support": "Customer Support & Service",
             "service": "Customer Support & Service",
             "helpdesk": "Customer Support & Service",
@@ -59,10 +74,27 @@ class NaturalQueryParser:
             "product": "Product & E-Commerce Review",
             "review": "Product & E-Commerce Review",
             "ui": "Product & E-Commerce Review",
+            "delivery": "Logistics & Delivery",
+            "shipping": "Logistics & Delivery",
+            "wifi": "Telecom & Connectivity",
+            "network": "Telecom & Connectivity",
+            "flight": "Travel & Aviation",
+            "booking": "Travel & Aviation",
+            "crypto": "Crypto & Web3",
             "press": "News & Corporate Announcement",
             "post-mortem": "News & Corporate Announcement",
             "notice": "News & Corporate Announcement"
         }
+
+        # Dynamically build comprehensive vocabulary
+        for cat in self.category_triggers:
+            self.vocabulary_terms.add(cat.lower())
+        for concept, syns in self.concept_graph.items():
+            self.vocabulary_terms.add(concept.lower())
+            for s in syns:
+                for w in s.split():
+                    if len(w) > 2:
+                        self.vocabulary_terms.add(w.lower())
 
     def edit_distance(self, s1: str, s2: str) -> int:
         if len(s1) < len(s2):

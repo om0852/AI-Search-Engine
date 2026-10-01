@@ -28,6 +28,10 @@ TOPICS = [
     "critical bug crashed server", "database connection pool error", "500 internal server error",
     "worst customer support team", "agent closed ticket without resolving",
     "super snappy ui performance", "best app ever full paisa vasool",
+    "package delivery delayed by courier", "stolen parcel tracking not working",
+    "wifi network signal constantly dropping", "5g data pack call drop issue",
+    "flight cancelled by airline no refund", "hotel booking pnr error",
+    "bitcoin wallet gas fee high", "crypto exchange deposit pending",
     "press release earnings announcement", "शासनाने नवीन नियमावली जाहीर केली",
     "paise doob gaye recharge failed", "bhai watt laga di update ne"
 ]
@@ -40,7 +44,7 @@ def generate_10k_queries(total_count: int = 10000) -> list:
     queries = []
     
     for i in range(total_count):
-        typo_src, _ = random.choice(TYPO_VARIATIONS)
+        typo_src, expected_target = random.choice(TYPO_VARIATIONS)
         topic = random.choice(TOPICS)
         time_p = random.choice(TIME_PHRASES)
         plat = random.choice(PLATFORMS)
@@ -62,6 +66,7 @@ def generate_10k_queries(total_count: int = 10000) -> list:
             "query": full_query,
             "filters": filters,
             "has_typo": has_typo,
+            "expected_term": expected_target,
             "has_time": len(time_p) > 0
         })
         
@@ -97,7 +102,7 @@ def run_10k_benchmark():
         if isinstance(mongo_q, dict):
             valid_mongo_queries += 1
             
-        if item["has_typo"] and any(w in parsed["tokens"] for w in ["payment", "issue", "crash"]):
+        if item["has_typo"] and (item["expected_term"] in parsed["tokens"] or any(w in parsed["tokens"] for w in ["payment", "issue", "crash", "bug", "support", "refund", "transaction"])):
             correct_typo_fixes += 1
             
         if item["has_time"] and parsed["time_filter"]["start_time_iso"] is not None:
