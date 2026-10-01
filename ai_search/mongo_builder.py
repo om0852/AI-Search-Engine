@@ -41,9 +41,24 @@ class MongoQueryBuilder:
         # C. Apply Numeric Price / Amount Filter from Natural Query
         nf = parsed.get("numeric_filter")
         if nf and nf.get("field") and nf.get("operator") and nf.get("value") is not None:
-            mongo_filter[nf["field"]] = { nf["operator"]: nf["value"] }
+            if nf["operator"] == "$between" and isinstance(nf["value"], list) and len(nf["value"]) == 2:
+                mongo_filter[nf["field"]] = { "$gte": nf["value"][0], "$lte": nf["value"][1] }
+            else:
+                mongo_filter[nf["field"]] = { nf["operator"]: nf["value"] }
 
-        # D. Apply Concept & Intent Expansion Filter ($or conditions)
+        # D. Apply Negation Exclusions ($nor conditions)
+        neg_filter = parsed.get("negation_filter")
+        if neg_filter:
+            nor_conds = []
+            if neg_filter.get("negated_categories"):
+                nor_conds.append({"category": {"$in": neg_filter["negated_categories"]}})
+            if neg_filter.get("negated_words"):
+                search_str = " ".join(neg_filter["negated_words"])
+                nor_conds.append({"$text": {"$search": search_str}})
+            if nor_conds:
+                mongo_filter["$nor"] = nor_conds
+
+        # E. Apply Concept & Intent Expansion Filter ($or conditions)
         or_conditions = []
 
         if parsed["detected_category"]:

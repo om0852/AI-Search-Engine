@@ -7,20 +7,12 @@ class NaturalQueryParser:
     """
     High-Performance Natural Language Search Query Parser.
     1. Typo Corrector: Uses Damerau-Levenshtein edit distance for terms like 'oayement' -> 'payment'.
-    2. Temporal Parser: Extracts relative time phrases like 'last 2 days', 'past 24 hours', 'yesterday', 'today'.
-    3. Concept & Intent Expander: Expands queries to domain categories, tags, and synonym clusters.
+    2. Temporal Parser: Extracts relative time phrases, fortnight, named weekdays, explicit years.
+    3. Numeric & Price Parser: Extracts range/numeric price filters ($gt, $lt, $between) while ignoring HTTP codes & repetition counts.
+    4. Negation Engine: Detects exclusions (not, no, except, without, never) and generates negated query bounds.
+    5. Concept & Intent Expander: Expands queries across 10 major industry domains.
     """
     def __init__(self):
-        self.vocabulary_terms = {
-            "payment", "payments", "pay", "transaction", "transactions", "debit", "debited",
-            "refund", "refunds", "billing", "invoice", "receipt", "charge", "charged",
-            "issue", "issues", "problem", "problems", "defect", "defects", "bug", "bugs",
-            "crash", "crashed", "crashing", "error", "errors", "timeout", "failed", "failure",
-            "service", "support", "ticket", "complaint", "review", "rating", "product",
-            "update", "version", "feature", "performance", "speed", "lag", "latency",
-            "outage", "offline", "down", "downtime", "account", "login", "password"
-        }
-
         self.concept_graph = {
             "payment": [
                 "payment", "upi", "debit", "debited", "transaction", "refund", "recharge", "bank",
@@ -86,7 +78,7 @@ class NaturalQueryParser:
             "notice": "News & Corporate Announcement"
         }
 
-        # Dynamically build comprehensive vocabulary
+        self.vocabulary_terms = set()
         for cat in self.category_triggers:
             self.vocabulary_terms.add(cat.lower())
         for concept, syns in self.concept_graph.items():
@@ -140,44 +132,98 @@ class NaturalQueryParser:
         end_time = None
         matched_expr = ""
 
+        # Days
         m_days = re.search(r"\b(?:in\s+|past\s+|last\s+)(\d+)\s*days?\b", text_lower)
         if m_days:
             num_days = int(m_days.group(1))
             start_time = reference_time - timedelta(days=num_days)
             end_time = reference_time
-            matched_expr = m_days.group(0)
-            return start_time, end_time, matched_expr
+            return start_time, end_time, m_days.group(0)
 
+        # Hours
         m_hours = re.search(r"\b(?:in\s+|past\s+|last\s+)(\d+)\s*hours?\b", text_lower)
         if m_hours:
             num_hours = int(m_hours.group(1))
             start_time = reference_time - timedelta(hours=num_hours)
             end_time = reference_time
-            matched_expr = m_hours.group(0)
-            return start_time, end_time, matched_expr
+            return start_time, end_time, m_hours.group(0)
+
+        # Fortnight (14 days)
+        if "fortnight" in text_lower:
+            start_time = reference_time - timedelta(days=14)
+            end_time = reference_time
+            return start_time, end_time, "fortnight"
+
+        # Explicit year (e.g. 2024, 2025)
+        m_year = re.search(r"\b(202[0-9])\b", text_lower)
+        if m_year:
+            yr = int(m_year.group(1))
+            start_time = datetime(yr, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+            end_time = datetime(yr, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+            return start_time, end_time, m_year.group(0)
+
+        # Weekdays (e.g. since last monday)
+        weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        for w_idx, w_name in enumerate(weekdays):
+            if w_name in text_lower:
+                cur_w = reference_time.weekday()
+                diff = (cur_w - w_idx) % 7
+                if diff == 0: diff = 7
+                start_time = reference_time - timedelta(days=diff)
+                end_time = reference_time
+                return start_time, end_time, w_name
 
         if "yesterday" in text_lower:
             start_time = (reference_time - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
             end_time = (reference_time - timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999999)
-            matched_expr = "yesterday"
-            return start_time, end_time, matched_expr
+            return start_time, end_time, "yesterday"
 
         if "today" in text_lower:
             start_time = reference_time.replace(hour=0, minute=0, second=0, microsecond=0)
             end_time = reference_time
-            matched_expr = "today"
-            return start_time, end_time, matched_expr
+            return start_time, end_time, "today"
 
         if "last week" in text_lower:
             start_time = reference_time - timedelta(days=7)
             end_time = reference_time
-            matched_expr = "last week"
-            return start_time, end_time, matched_expr
+            return start_time, end_time, "last week"
+
+        if "recent" in text_lower or "latest" in text_lower:
+            start_time = reference_time - timedelta(days=7)
+            end_time = reference_time
+            return start_time, end_time, "recent"
 
         return None, None, ""
 
     def parse_numeric_expression(self, text: str) -> Tuple[Optional[Dict[str, Any]], str]:
         text_lower = text.lower()
+
+        # Range notation: between X and Y
+        m_range = re.search(r"\b(?:between|from)\s*(\d+(?:\.\d+)?)\s*(k|thousand)?\s*(?:and|to)\s*(\d+(?:\.\d+)?)\s*(k|thousand|lakh|rupees|inr|rs)?\b", text_lower)
+        if m_range:
+            v1 = float(m_range.group(1)) * (1000 if m_range.group(2) in ["k", "thousand"] else 1)
+            v2 = float(m_range.group(3)) * (1000 if m_range.group(4) in ["k", "thousand"] else 1)
+            return {
+                "expression": m_range.group(0),
+                "field": "price",
+                "operator": "$between",
+                "value": [int(v1), int(v2)]
+            }, m_range.group(0)
+
+        # Currency symbol notation: $50, rs 500
+        m_curr = re.search(r"\b(?:under|below|less than|above|more than)?\s*(\$|rs\.?|inr)\s*(\d+(?:\.\d+)?)\s*(k|thousand)?\b", text_lower)
+        if m_curr:
+            op_str = m_curr.group(0)
+            v = float(m_curr.group(2)) * (1000 if m_curr.group(3) in ["k", "thousand"] else 1)
+            op = "$gt" if any(w in op_str for w in ["above", "more"]) else "$lt"
+            return {
+                "expression": m_curr.group(0),
+                "field": "price",
+                "operator": op,
+                "value": int(v)
+            }, m_curr.group(0)
+
+        # Standard verbal range
         pattern = r"\b(price|cost|amount|val|fee|money)?\s*(more than|greater than|above|over|exceeding|less than|under|below|lower than)\s*(\d+(?:\.\d+)?)\s*(k|thousand|lakh|lac|m|million|b|billion)?\b"
         m = re.search(pattern, text_lower, re.IGNORECASE)
         if not m:
@@ -208,17 +254,52 @@ class NaturalQueryParser:
             "value": final_val
         }, m.group(0)
 
+    def parse_negations(self, text: str) -> Tuple[Optional[Dict[str, Any]], str]:
+        """
+        Detects negation / exclusion triggers (not, no, except, without, never, dont, stop).
+        Returns negated terms and category exclusions.
+        """
+        text_lower = text.lower()
+        pattern = r"\b(not about|not for|except|without|no|never|dont|stop)\s+([A-Za-z0-9_\s]+)\b"
+        m = re.search(pattern, text_lower)
+        if not m:
+            return None, ""
+
+        trigger = m.group(1)
+        neg_target = m.group(2).strip()
+
+        # Stop at conjunctions if present
+        for conj in [" but ", " and ", " in ", " on ", " for ", " with "]:
+            if conj in neg_target:
+                neg_target = neg_target.split(conj)[0].strip()
+
+        neg_words = [w for w in re.findall(r"\b\w+\b", neg_target) if len(w) > 2]
+        neg_categories = []
+        for w in neg_words:
+            if w in self.category_triggers:
+                neg_categories.append(self.category_triggers[w])
+
+        return {
+            "expression": m.group(0),
+            "negated_phrase": neg_target,
+            "negated_words": neg_words,
+            "negated_categories": neg_categories
+        }, m.group(0)
+
     def parse_query(self, raw_query: str, reference_time: Optional[datetime] = None) -> Dict[str, Any]:
         start_time, end_time, time_expr = self.parse_time_expression(raw_query, reference_time=reference_time)
         numeric_filter, numeric_expr = self.parse_numeric_expression(raw_query)
+        negation_filter, negation_expr = self.parse_negations(raw_query)
 
         query_clean = raw_query
         if time_expr:
             query_clean = re.sub(re.escape(time_expr), "", query_clean, flags=re.IGNORECASE).strip()
         if numeric_expr:
             query_clean = re.sub(re.escape(numeric_expr), "", query_clean, flags=re.IGNORECASE).strip()
+        if negation_expr:
+            query_clean = re.sub(re.escape(negation_expr), "", query_clean, flags=re.IGNORECASE).strip()
 
-        stop_words = {"occur", "occurred", "having", "show", "find", "get", "posts", "post", "in", "the", "with", "a", "an", "for", "of"}
+        stop_words = {"occur", "occurred", "having", "show", "find", "get", "posts", "post", "in", "the", "with", "a", "an", "for", "of", "not", "no", "without", "except"}
         raw_words = [w.strip() for w in re.findall(r"\b\w+\b", query_clean.lower()) if w.strip() not in stop_words]
 
         corrected_tokens = [self.correct_typo(w) for w in raw_words]
@@ -250,6 +331,7 @@ class NaturalQueryParser:
             "expanded_keywords": list(expanded_keywords),
             "suggested_tags": list(suggested_tags),
             "numeric_filter": numeric_filter,
+            "negation_filter": negation_filter,
             "time_filter": {
                 "expression": time_expr if time_expr else None,
                 "start_time_iso": start_time.isoformat() if start_time else None,
