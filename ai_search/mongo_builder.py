@@ -38,7 +38,12 @@ class MongoQueryBuilder:
                 time_cond["$lte"] = tf["end_time_iso"]
             mongo_filter["created_at"] = time_cond
 
-        # C. Apply Concept & Intent Expansion Filter ($or conditions)
+        # C. Apply Numeric Price / Amount Filter from Natural Query
+        nf = parsed.get("numeric_filter")
+        if nf and nf.get("field") and nf.get("operator") and nf.get("value") is not None:
+            mongo_filter[nf["field"]] = { nf["operator"]: nf["value"] }
+
+        # D. Apply Concept & Intent Expansion Filter ($or conditions)
         or_conditions = []
 
         if parsed["detected_category"]:

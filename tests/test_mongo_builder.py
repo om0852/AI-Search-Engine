@@ -14,3 +14,16 @@ def test_mongo_query_builder():
     assert mongo_q["sentiment.label"] == "negative"
     assert "$gte" in mongo_q["created_at"]
     assert "$or" in mongo_q
+
+def test_numeric_price_query_builder():
+    builder = MongoQueryBuilder()
+    res = builder.build_query("Payment issue having price more than 2 thousand")
+    
+    mongo_q = res["mongo_query"]
+    parsed = res["parsed_intent"]
+    
+    assert "price" in mongo_q
+    assert mongo_q["price"] == {"$gt": 2000}
+    assert parsed["numeric_filter"]["operator"] == "$gt"
+    assert parsed["numeric_filter"]["value"] == 2000
+    assert "$or" in mongo_q

@@ -176,15 +176,50 @@ class NaturalQueryParser:
 
         return None, None, ""
 
+    def parse_numeric_expression(self, text: str) -> Tuple[Optional[Dict[str, Any]], str]:
+        text_lower = text.lower()
+        pattern = r"\b(price|cost|amount|val|fee|money)?\s*(more than|greater than|above|over|exceeding|less than|under|below|lower than)\s*(\d+(?:\.\d+)?)\s*(k|thousand|lakh|lac|m|million|b|billion)?\b"
+        m = re.search(pattern, text_lower, re.IGNORECASE)
+        if not m:
+            return None, ""
+
+        field_matched = m.group(1) or "price"
+        op_phrase = m.group(2).lower()
+        num_str = m.group(3)
+        unit_str = (m.group(4) or "").lower()
+
+        val = float(num_str)
+        if unit_str in ["k", "thousand"]:
+            val *= 1000
+        elif unit_str in ["lakh", "lac"]:
+            val *= 100000
+        elif unit_str in ["m", "million"]:
+            val *= 1000000
+        elif unit_str in ["b", "billion"]:
+            val *= 1000000000
+
+        final_val = int(val) if val.is_integer() else val
+        op = "$gt" if any(w in op_phrase for w in ["more", "greater", "above", "over", "exceeding"]) else "$lt"
+
+        return {
+            "expression": m.group(0),
+            "field": field_matched if field_matched in ["price", "cost", "amount", "fee"] else "price",
+            "operator": op,
+            "value": final_val
+        }, m.group(0)
+
     def parse_query(self, raw_query: str, reference_time: Optional[datetime] = None) -> Dict[str, Any]:
         start_time, end_time, time_expr = self.parse_time_expression(raw_query, reference_time=reference_time)
+        numeric_filter, numeric_expr = self.parse_numeric_expression(raw_query)
 
-        query_no_time = raw_query
+        query_clean = raw_query
         if time_expr:
-            query_no_time = re.sub(re.escape(time_expr), "", raw_query, flags=re.IGNORECASE).strip()
+            query_clean = re.sub(re.escape(time_expr), "", query_clean, flags=re.IGNORECASE).strip()
+        if numeric_expr:
+            query_clean = re.sub(re.escape(numeric_expr), "", query_clean, flags=re.IGNORECASE).strip()
 
         stop_words = {"occur", "occurred", "having", "show", "find", "get", "posts", "post", "in", "the", "with", "a", "an", "for", "of"}
-        raw_words = [w.strip() for w in re.findall(r"\b\w+\b", query_no_time.lower()) if w.strip() not in stop_words]
+        raw_words = [w.strip() for w in re.findall(r"\b\w+\b", query_clean.lower()) if w.strip() not in stop_words]
 
         corrected_tokens = [self.correct_typo(w) for w in raw_words]
         clean_text = " ".join(corrected_tokens)
@@ -214,6 +249,7 @@ class NaturalQueryParser:
             "detected_category": detected_category,
             "expanded_keywords": list(expanded_keywords),
             "suggested_tags": list(suggested_tags),
+            "numeric_filter": numeric_filter,
             "time_filter": {
                 "expression": time_expr if time_expr else None,
                 "start_time_iso": start_time.isoformat() if start_time else None,
