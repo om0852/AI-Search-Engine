@@ -7,24 +7,31 @@ class MongoQueryBuilder:
     Translates Natural Language queries and UI dropdown filters into native,
     highly indexed MongoDB query JSON objects for PyMongo or Mongoose.
     """
-    def __init__(self, parser: Optional[NaturalQueryParser] = None):
+    def __init__(self, parser: Optional[NaturalQueryParser] = None, date_field: str = "pubDate", sentiment_field: str = "sentimental", source_field: str = "source"):
         self.parser = parser or NaturalQueryParser()
+        self.date_field = date_field
+        self.sentiment_field = sentiment_field
+        self.source_field = source_field
 
     def build_query(self, natural_query: str, ui_filters: Optional[Dict[str, Any]] = None, reference_time: Optional[datetime] = None) -> Dict[str, Any]:
         """
         Combines parsed AI natural query parameters with user's UI dropdown filters.
-        Example UI filters: {'platform': 'twitter', 'sentiment': 'negative', 'language': 'marathi'}
+        Example UI filters: {'source': 'twitter', 'sentimental': 'Negative', 'keywords': 'Canva'}
         """
         parsed = self.parser.parse_query(natural_query, reference_time=reference_time)
         ui_filters = ui_filters or {}
 
         mongo_filter: Dict[str, Any] = {}
 
-        # A. Apply UI Dropdown Filters (e.g. platform, sentiment, author)
+        # A. Apply UI Dropdown Filters (e.g. source/platform, sentimental/sentiment)
         for key, val in ui_filters.items():
             if val is not None and val != "":
-                if key == "sentiment":
-                    mongo_filter["sentiment.label"] = val.lower()
+                if key in ["sentiment", "sentimental"]:
+                    mongo_filter["sentiment.label"] = val.lower() if isinstance(val, str) else val
+                    mongo_filter[self.sentiment_field] = val
+                elif key in ["platform", "source"]:
+                    mongo_filter[key] = val
+                    mongo_filter[self.source_field] = val
                 else:
                     mongo_filter[key] = val
 
@@ -36,7 +43,9 @@ class MongoQueryBuilder:
                 time_cond["$gte"] = tf["start_time_iso"]
             if tf["end_time_iso"]:
                 time_cond["$lte"] = tf["end_time_iso"]
-            mongo_filter["created_at"] = time_cond
+            mongo_filter[self.date_field] = time_cond
+            if self.date_field != "created_at":
+                mongo_filter["created_at"] = time_cond
 
         # C. Apply Numeric Price / Amount Filter from Natural Query
         nf = parsed.get("numeric_filter")
