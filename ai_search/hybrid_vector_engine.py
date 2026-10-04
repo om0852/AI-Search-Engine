@@ -1,5 +1,6 @@
 import math
 import re
+import zlib
 import numpy as np
 from typing import List, Dict, Any, Tuple, Optional
 
@@ -36,7 +37,8 @@ class HybridVectorEngine:
     def encode_dense_vector(self, text: str) -> np.ndarray:
         """
         Encodes arbitrary text into a normalized 128-dimensional dense semantic embedding vector.
-        Uses sub-word hashing to capture typos, morphological roots, and semantic similarity.
+        Uses deterministic sub-word hashing (zlib.crc32) to capture typos, morphological roots,
+        and semantic similarity consistently across all OS platforms and Python runtimes.
         """
         vec = np.zeros(self.vector_dim, dtype=np.float32)
         tokens = self._clean_tokens(text)
@@ -48,8 +50,9 @@ class HybridVectorEngine:
             ngrams = self._get_subword_ngrams(token)
             for ngram in ngrams:
                 # Deterministic feature hash projection
-                h = hash(ngram) % self.vector_dim
-                val = (hash(ngram + "_sign") % 2) * 2 - 1  # +1 or -1
+                h_val = zlib.crc32(ngram.encode('utf-8'))
+                h = h_val % self.vector_dim
+                val = (zlib.crc32((ngram + "_sign").encode('utf-8')) % 2) * 2 - 1  # +1 or -1
                 vec[h] += float(val)
                 total_weight += 1.0
 
@@ -57,6 +60,7 @@ class HybridVectorEngine:
         if norm > 0:
             vec = vec / norm
         return vec
+
 
     def compute_dense_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
         """
