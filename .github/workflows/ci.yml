@@ -63,6 +63,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Lowercase Repository Name
+        id: string
+        run: |
+          echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
       - name: Build & Push Docker Image
         uses: docker/build-push-action@v5
         with:
@@ -70,8 +75,8 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/${{ steps.string.outputs.REPO_LOWER }}:latest
+            ghcr.io/${{ steps.string.outputs.REPO_LOWER }}:${{ github.sha }}
 
   version-and-release:
     name: Automated Semantic Versioning & Tagging
