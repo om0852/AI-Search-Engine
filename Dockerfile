@@ -1,8 +1,7 @@
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PORT=7860
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
@@ -17,11 +16,12 @@ COPY ai_search/ /app/ai_search/
 COPY src/ /app/src/
 COPY run.py /app/run.py
 
-EXPOSE 7860
+EXPOSE 8001 7860
 
 HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
-    CMD curl -f http://localhost:7860/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8001}/health || exit 1
 
 CMD ["python", "run.py", "serve"]
+
 
 

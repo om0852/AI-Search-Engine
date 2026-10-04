@@ -14,11 +14,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY ai_search/ /app/ai_search/
 COPY src/ /app/src/
+COPY run.py /app/run.py
 
-EXPOSE 8001
+EXPOSE 8001 7860
 
 HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8001}/health || exit 1
 
-CMD ["sh", "-c", "uvicorn src.serving.app:app --host 0.0.0.0 --port ${PORT:-8001} --workers 1"]
+CMD ["python", "run.py", "serve"]
+
 
